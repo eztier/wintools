@@ -1,0 +1,14 @@
+.obj
+*.xml
+*.json
+*.VC.db
+*.VC.opendb
+x64/
+internal/
+build/
+**/intermediate/
+**/build/
+**/config/
+Debug/
+Release/
+**/#log/
