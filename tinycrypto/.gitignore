@@ -1,9 +1,6 @@
 .vs/
-*.sln
 *.db
 *.opendb
-*.vcxproj
-*.vcxproj.filters
 *.vcxproj.user
 x64
 Debug
