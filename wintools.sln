@@ -11,6 +11,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "xml-win", "xml-win\xml-win.
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "common", "common\common.vcxproj", "{C1A8FD4B-00CD-44EE-A145-F0E953EC6D6C}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "tinycrypto", "tinycrypto\tinycrypto.vcxproj", "{92D6D813-BD3A-4C14-B9FA-F8EF80EDF473}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -51,6 +53,14 @@ Global
 		{C1A8FD4B-00CD-44EE-A145-F0E953EC6D6C}.Release|x64.Build.0 = Release|x64
 		{C1A8FD4B-00CD-44EE-A145-F0E953EC6D6C}.Release|x86.ActiveCfg = Release|Win32
 		{C1A8FD4B-00CD-44EE-A145-F0E953EC6D6C}.Release|x86.Build.0 = Release|Win32
+		{92D6D813-BD3A-4C14-B9FA-F8EF80EDF473}.Debug|x64.ActiveCfg = Debug|x64
+		{92D6D813-BD3A-4C14-B9FA-F8EF80EDF473}.Debug|x64.Build.0 = Debug|x64
+		{92D6D813-BD3A-4C14-B9FA-F8EF80EDF473}.Debug|x86.ActiveCfg = Debug|Win32
+		{92D6D813-BD3A-4C14-B9FA-F8EF80EDF473}.Debug|x86.Build.0 = Debug|Win32
+		{92D6D813-BD3A-4C14-B9FA-F8EF80EDF473}.Release|x64.ActiveCfg = Release|x64
+		{92D6D813-BD3A-4C14-B9FA-F8EF80EDF473}.Release|x64.Build.0 = Release|x64
+		{92D6D813-BD3A-4C14-B9FA-F8EF80EDF473}.Release|x86.ActiveCfg = Release|Win32
+		{92D6D813-BD3A-4C14-B9FA-F8EF80EDF473}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
