@@ -1,4 +1,5 @@
-#include <Windows.h>
+#include <windows.h>
+#include <strsafe.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,3 +23,11 @@ __declspec( dllexport ) int EncryptFileFinal();
 
 __declspec( dllexport ) unsigned char* DecryptFileX(char* private_key, char* shared_secret, char* filename, int* decrypted_size);
 __declspec( dllexport ) void FreeDecryptedMemory();
+
+// Logging
+SYSTEMTIME st;
+char timestamp[20];
+char* dlog = "#log";
+FILE* logfile;
+char logfile_path[500];
+void get_current_time(SYSTEMTIME* st, char*  timestamp);

@@ -10,8 +10,64 @@
 **/
 #include "program.h"
 
-const char* shared_secret = "audit24\\key-new.enc";
-const char* private_key = "audit24\\privatekey.pem";
+void get_current_time(SYSTEMTIME* st, char*  timestamp) {
+  GetLocalTime(st);
+  sprintf(timestamp, "%04d-%02d-%02d %02d:%02d:%02d", st->wYear, st->wMonth, st->wDay, st->wHour, st->wMinute, st->wSecond);
+}
+
+void get_current_date(SYSTEMTIME* st, char*  timestamp) {
+  GetLocalTime(st);
+  sprintf(timestamp, "%04d-%02d-%02d", st->wYear, st->wMonth, st->wDay);
+}
+
+void setupLogging() {
+  if (GetFileAttributes(dlog) == INVALID_FILE_ATTRIBUTES)
+    CreateDirectory(dlog, NULL);
+
+  get_current_date(&st, timestamp);
+
+  sprintf(logfile_path, "%s\\%s$%s.log", dlog, "tinycrypto", timestamp);
+}
+
+void LogError(char* lpszFunction, unsigned long dw) {
+  // Retrieve the system error message for the last-error code
+  void* lpMsgBuf;
+  void* lpDisplayBuf;
+  
+  FormatMessage(
+    FORMAT_MESSAGE_ALLOCATE_BUFFER |
+    FORMAT_MESSAGE_FROM_SYSTEM |
+    FORMAT_MESSAGE_IGNORE_INSERTS,
+    NULL,
+    dw,
+    MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+    (char*)&lpMsgBuf,
+    0, NULL);
+
+  lpDisplayBuf = (void*)LocalAlloc(LMEM_ZEROINIT,
+    (lstrlen((const char*)lpMsgBuf) + lstrlen((const char*)lpszFunction) + 40) * sizeof(char));
+
+  StringCchPrintf((char*)lpDisplayBuf,
+    LocalSize(lpDisplayBuf) / sizeof(char),
+    TEXT("%s failed with error %d: %s"),
+    lpszFunction, dw, lpMsgBuf);
+  
+  get_current_time(&st, timestamp);
+
+  // Create log file path.
+  setupLogging();
+
+  logfile = fopen(logfile_path, "w+");
+  // printf("%s\n", (const char*)lpDisplayBuf);
+  fprintf(logfile, "%s %s\n", timestamp, (const char*)lpDisplayBuf);
+  fclose(logfile);
+
+  LocalFree(lpMsgBuf);
+  LocalFree(lpDisplayBuf);
+}
+
+const char* shared_secret = "resources\\key-new.enc";
+const char* private_key = "resources\\privatekey.pem";
 
 //global vars
 unsigned char* decrypted_data = NULL;
@@ -191,7 +247,12 @@ char* get_shared_secret(const char* keyfile, const char* ssecret) {
 	  NULL
   );  // attr. template
   
-  if (hFile == INVALID_HANDLE_VALUE) { 
+  if (hFile == INVALID_HANDLE_VALUE) {
+    unsigned long dw = GetLastError();
+    char* msg = malloc(strlen(ssecret) + 20);
+    sprintf(msg, "CreateFile(%s)", ssecret);
+    LogError(msg, dw);
+    free(msg);
     goto Cleanup;
   }
 
