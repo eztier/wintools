@@ -10,6 +10,14 @@
 **/
 #include "program.h"
 
+// Logging
+SYSTEMTIME st;
+char timestamp[20];
+char* ddir = "#log";
+char* dname = "tinycrypto";
+// FILE* logfile;
+// char logfile_path[500];
+
 void get_current_time(SYSTEMTIME* st, char*  timestamp) {
   GetLocalTime(st);
   sprintf(timestamp, "%04d-%02d-%02d %02d:%02d:%02d", st->wYear, st->wMonth, st->wDay, st->wHour, st->wMinute, st->wSecond);
@@ -20,16 +28,18 @@ void get_current_date(SYSTEMTIME* st, char*  timestamp) {
   sprintf(timestamp, "%04d-%02d-%02d", st->wYear, st->wMonth, st->wDay);
 }
 
-void setupLogging() {
-  if (GetFileAttributes(dlog) == INVALID_FILE_ATTRIBUTES)
-    CreateDirectory(dlog, NULL);
+char* setupLogging(const char* logfolder, const char* logfilename, char* logfullpath) {
+  if (GetFileAttributes(logfolder) == INVALID_FILE_ATTRIBUTES)
+    CreateDirectory(logfolder, NULL);
 
   get_current_date(&st, timestamp);
 
-  sprintf(logfile_path, "%s\\%s$%s.log", dlog, "tinycrypto", timestamp);
+  sprintf(logfullpath, "%s\\%s$%s.log", logfolder, logfilename, timestamp);
+
+  return logfullpath;
 }
 
-void LogError(char* lpszFunction, unsigned long dw) {
+void LogError(const char* logfolder, const char* logfilename, char* lpszFunction, unsigned long dw) {
   // Retrieve the system error message for the last-error code
   void* lpMsgBuf;
   void* lpDisplayBuf;
@@ -55,19 +65,16 @@ void LogError(char* lpszFunction, unsigned long dw) {
   get_current_time(&st, timestamp);
 
   // Create log file path.
-  setupLogging();
+  char lpath[500];
+  setupLogging(ddir, dname, lpath);
 
-  logfile = fopen(logfile_path, "w+");
-  // printf("%s\n", (const char*)lpDisplayBuf);
+  FILE* logfile = fopen(lpath, "w+");
   fprintf(logfile, "%s %s\n", timestamp, (const char*)lpDisplayBuf);
   fclose(logfile);
 
   LocalFree(lpMsgBuf);
   LocalFree(lpDisplayBuf);
 }
-
-const char* shared_secret = "resources\\key-new.enc";
-const char* private_key = "resources\\privatekey.pem";
 
 //global vars
 unsigned char* decrypted_data = NULL;
@@ -205,17 +212,22 @@ char* get_shared_secret(const char* keyfile, const char* ssecret) {
 	BOOLEAN succeeded;
 	int decrypted_sz = 0;
 
-	//get the private key
-	hFile = CreateFile(keyfile,                // name of the write
+	// Get the private key
+	hFile = CreateFile(keyfile,
     GENERIC_WRITE|GENERIC_READ,  // open for writing/read
-    FILE_SHARE_DELETE|FILE_SHARE_READ|FILE_SHARE_WRITE,   // share all
-    0,                   // new security
-    OPEN_EXISTING,          // overwrite FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,  // normal file
-    FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,
-	  NULL
-  );  // attr. template
+    FILE_SHARE_DELETE|FILE_SHARE_READ|FILE_SHARE_WRITE,  // share all
+    0,  // new security
+    OPEN_EXISTING,  // normal file
+    FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,  // overwrite
+	  NULL // No attr template
+  );
   
-  if (hFile == INVALID_HANDLE_VALUE) { 
+  if (hFile == INVALID_HANDLE_VALUE) {
+    unsigned long dw = GetLastError();
+    char* msg = malloc(strlen(keyfile) + 20);
+    sprintf(msg, "CreateFile(%s)", keyfile);
+    LogError(ddir, dname, msg, dw);
+    free(msg);
     return retval;
   }
 
@@ -224,34 +236,46 @@ char* get_shared_secret(const char* keyfile, const char* ssecret) {
 	succeeded = ReadFile(hFile, keybuf, fsize, &bytes_processed, NULL);
 	CloseHandle(hFile);
 
-	if (!succeeded)
-		return retval;
+  if (!succeeded) {
+    unsigned long dw = GetLastError();
+    char* msg = malloc(strlen(keyfile) + 20);
+    sprintf(msg, "ReadFile(%s) failed", keyfile);
+    LogError(ddir, dname, msg, dw);
+    free(msg);
+    return retval;
+  }
 	
 	bio = BIO_new(BIO_s_mem());
-	if (bio == NULL)
-		goto Cleanup;
+  if (bio == NULL) {
+    unsigned long dw = GetLastError();
+    LogError(ddir, dname, "BIO_new (bio is NULL)", dw);
+    goto Cleanup;
+  }
 
 	BIO_write(bio, keybuf, fsize);
 	
 	rsa = PEM_read_bio_RSAPrivateKey(bio, NULL, NULL, NULL);
-	if (rsa == NULL)
-		goto Cleanup;
+  if (rsa == NULL) {
+    unsigned long dw = GetLastError();
+    LogError(ddir, dname, "PEM_read_bio_RSAPrivateKey (rsa is NULL)", dw);
+    goto Cleanup;
+  }
 
 	//do stuff with rsa and get the shared secret
-	hFile = CreateFile(ssecret,                // name of the write
-    GENERIC_WRITE|GENERIC_READ,  // open for writing/read
-    FILE_SHARE_DELETE|FILE_SHARE_READ|FILE_SHARE_WRITE,   // share all
-    0,                   // new security
-    OPEN_EXISTING,          // overwrite FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,  // normal file
+	hFile = CreateFile(ssecret,
+    GENERIC_WRITE|GENERIC_READ,
+    FILE_SHARE_DELETE|FILE_SHARE_READ|FILE_SHARE_WRITE,
+    0,
+    OPEN_EXISTING,
     FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,
 	  NULL
-  );  // attr. template
+  );
   
   if (hFile == INVALID_HANDLE_VALUE) {
     unsigned long dw = GetLastError();
     char* msg = malloc(strlen(ssecret) + 20);
     sprintf(msg, "CreateFile(%s)", ssecret);
-    LogError(msg, dw);
+    LogError(ddir, dname, msg, dw);
     free(msg);
     goto Cleanup;
   }
@@ -261,8 +285,14 @@ char* get_shared_secret(const char* keyfile, const char* ssecret) {
 	succeeded = ReadFile(hFile, secbuf, fsize, &bytes_processed, NULL);
 	CloseHandle(hFile);
 
-	if (!succeeded) 
-		goto Cleanup;
+  if (!succeeded) {
+    unsigned long dw = GetLastError();
+    char* msg = malloc(strlen(ssecret) + 20);
+    sprintf(msg, "ReadFile(%s) failed", ssecret);
+    LogError(ddir, dname, msg, dw);
+    free(msg);
+    goto Cleanup;
+  }
 
 	retval = (char*) malloc(fsize);
 	decrypted_sz = RSA_private_decrypt(fsize, secbuf, (unsigned char*)retval, rsa, RSA_PKCS1_PADDING); // != -1
@@ -318,20 +348,26 @@ unsigned char* DecryptFileX(char* private_key, char* shared_secret, char* filena
   
 	//gen key and iv. init the cipher ctx object
 	if (aes_init(key_data, key_data_len, NULL, iv, &en, &de)) {
-		//printf("Couldn't initialize AES cipher\n");
+		unsigned long dw = GetLastError();
+    LogError(ddir, dname, "aes_init (Couldn't initialize AES cipher)", dw);
 		goto Cleanup;
 	}
 
-	hFile = CreateFile(filename,                // name of file
-    GENERIC_WRITE|GENERIC_READ,  // open for writing/read
-    FILE_SHARE_DELETE|FILE_SHARE_READ|FILE_SHARE_WRITE,   // share all
-    0,                   // new security
-    OPEN_EXISTING,          // overwrite FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,  // normal file
+	hFile = CreateFile(filename,
+    GENERIC_WRITE|GENERIC_READ,
+    FILE_SHARE_DELETE|FILE_SHARE_READ|FILE_SHARE_WRITE,
+    0,
+    OPEN_EXISTING,
     FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,
 	  NULL
-  );  // attr. template
+  );
     
-	if (hFile == INVALID_HANDLE_VALUE) { 
+	if (hFile == INVALID_HANDLE_VALUE) {
+    unsigned long dw = GetLastError();
+    char* msg = malloc(strlen(filename) + 20);
+    sprintf(msg, "CreateFile(%s)", filename);
+    LogError(ddir, dname, msg, dw);
+    free(msg);
     goto Cleanup;
   }
 	
@@ -340,8 +376,14 @@ unsigned char* DecryptFileX(char* private_key, char* shared_secret, char* filena
 	succeeded = ReadFile(hFile, encrypted, fsize, &bytes_processed, NULL); 
 	CloseHandle(hFile);
 	
-	if (!succeeded) 
-		goto Cleanup;
+  if (!succeeded) {
+    unsigned long dw = GetLastError();
+    char* msg = malloc(strlen(filename) + 20);
+    sprintf(msg, "ReadFile(%s) failed", filename);
+    LogError(ddir, dname, msg, dw);
+    free(msg);
+    goto Cleanup;
+  }
 	decrypted_data = (unsigned char *)aes_decrypt(&de, encrypted, &fsize);
 	*decrypted_size = fsize;
 	
@@ -370,32 +412,34 @@ int EncryptFileInit(char* private_key, char* shared_secret, char* filename) {
   
 	//gen key and iv. init the cipher ctx object
 	if ((rc = aes_init(key_data, key_data_len, NULL, iv, &en, &de))) {
+    unsigned long dw = GetLastError();
+    LogError(ddir, dname, "aes_init (Couldn't initialize AES cipher)", dw);
 		goto Cleanup;
 	}
 
 	/* allows reusing of 'e' for multiple encryption cycles */
 	rc = EVP_EncryptInit_ex(&en, NULL, NULL, NULL, NULL);
 
-	hFile = CreateFile(filename,                // name of file
-    GENERIC_WRITE|GENERIC_READ,  // open for writing/read
-    FILE_SHARE_DELETE|FILE_SHARE_READ|FILE_SHARE_WRITE,   // share all
-    0,                   // new security
-    CREATE_ALWAYS,          // overwrite FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,  // normal file
+	hFile = CreateFile(filename,
+    GENERIC_WRITE|GENERIC_READ,
+    FILE_SHARE_DELETE|FILE_SHARE_READ|FILE_SHARE_WRITE,
+    0,
+    CREATE_ALWAYS,
     FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,
 	  NULL
-  );  // attr. template
+  );
 	
   if (hFile == NULL) rc = -1;
 	CloseHandle(hFile);
 	//open the file handle for append
-	hFile = CreateFile(filename,                // name of file
-    FILE_APPEND_DATA,  // open for writing/read
-    FILE_SHARE_DELETE|FILE_SHARE_READ|FILE_SHARE_WRITE,   // share all
-    0,                   // new security
-    OPEN_EXISTING,          // open of create
+	hFile = CreateFile(filename,
+    FILE_APPEND_DATA,
+    FILE_SHARE_DELETE|FILE_SHARE_READ|FILE_SHARE_WRITE,
+    0,
+    OPEN_EXISTING,
     FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,
 	  NULL
-  );  // attr. template
+  );
 	
   if (hFile == NULL) rc = -2;
 	return rc;
@@ -467,22 +511,29 @@ int EncryptFileX(unsigned char* data, unsigned long datasize, char* private_key,
   
 	//gen key and iv. init the cipher ctx object
 	if (aes_init(key_data, key_data_len, NULL, iv, &en, &de)) {
+    unsigned long dw = GetLastError();
+    LogError(ddir, dname, "aes_init (Couldn't initialize AES cipher)", dw);
 		goto Cleanup;
 	}
 
   encrypted = aes_encrypt(&en, data, &fsize);
 	
   //export the file
-	hFile = CreateFile(filename,                // name of file
-    GENERIC_WRITE|GENERIC_READ,  // open for writing/read
-    FILE_SHARE_DELETE|FILE_SHARE_READ|FILE_SHARE_WRITE,   // share all
-    0,                   // new security
-    CREATE_ALWAYS,          // overwrite FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,  // normal file
+	hFile = CreateFile(filename,
+    GENERIC_WRITE|GENERIC_READ,
+    FILE_SHARE_DELETE|FILE_SHARE_READ|FILE_SHARE_WRITE,
+    0,
+    CREATE_ALWAYS,
     FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,
 	  NULL
-  );  // attr. template
+  );
     
-	if (hFile == INVALID_HANDLE_VALUE) { 
+	if (hFile == INVALID_HANDLE_VALUE) {
+    unsigned long dw = GetLastError();
+    char* msg = malloc(strlen(filename) + 20);
+    sprintf(msg, "CreateFile(%s)", filename);
+    LogError(ddir, dname, msg, dw);
+    free(msg);
     goto Cleanup;
   }
 	
@@ -499,97 +550,100 @@ Cleanup:
 	return fsize;
 }
 
-int main(int argc, char **argv)
-{
-	/* "opaque" encryption, decryption ctx structures that libcrypto uses to record status of enc/dec operations */
-	char* secret = NULL;
-	unsigned char *key_data = NULL;
-	unsigned char* decrypted;
-	unsigned char* encrypted;
-	int rc;
+void test_1(const char* private_key, const char* shared_secret) {
+  FILE* fdone = NULL;
+  unsigned char* data = NULL;
+  int rc, data_size;
 
-	char* iv = NULL;
-	HANDLE hFile;
-	int fsize;
-	int key_data_len = 64, data_size; //, i;
-	unsigned long bytes_processed;
-  
-	unsigned char* data = NULL;
-	
-	FILE* fp = NULL;
-	FILE* fdone = NULL;
+  data = DecryptFileX((char*)private_key, (char*)shared_secret, "cred.enc", &data_size);
 
-	goto test2;
-	
-  //TEST #1
-	data = DecryptFileX((char*)private_key, (char*)shared_secret, "cred.enc", &data_size);
-
-	fp = fopen("C:\\source\\bigfile.txt", "rb+");
-	rc = EncryptFileInit((char*) private_key, (char*)shared_secret, "e-bigfile.dat");
-	for (;;) {
-		inlen = fread(inbuf, 1, 131072, fp);
-        if(inlen <= 0) break;
-		rc = EncryptFileUpdate(inbuf, inlen); 
-	}
-	rc = EncryptFileFinal();
-
-	//fsize = EncryptFileX(encrypted, fsize, (char*) private_key, (char*)shared_secret, "e-bigfile.dat");
-	
-	data = DecryptFileX((char*)private_key, (char*)shared_secret, "e-bigfile.dat", &data_size);
-	fdone = fopen("d-bigfile.txt", "wb");
-	fwrite(data, 1, data_size, fdone);
-	fclose(fdone);
-	//-----------------------------------------------------------------------------------------------------------
-test2:
-	secret = get_shared_secret(private_key, shared_secret);
-	
-	if (secret == NULL) return -1;
-	
-	extract_shared_secret(secret, key_data, iv);
-  
-	/* gen key and iv. init the cipher ctx object */
-	if (aes_init(key_data, key_data_len, NULL, iv, &en, &de)) {
-		printf("Couldn't initialize AES cipher\n");
-		return -1;
-	}
-
-	hFile = CreateFile("e-bigfile.dat",                // name of the write
-    GENERIC_WRITE|GENERIC_READ,  // open for writing/read
-    FILE_SHARE_DELETE|FILE_SHARE_READ|FILE_SHARE_WRITE,   // share all
-    0,                   // new security
-    OPEN_EXISTING,          // overwrite FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,  // normal file
-    FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,
-	  NULL
-  );  // attr. template
-    
-	if (hFile == INVALID_HANDLE_VALUE) { 
-    //goto Cleanup;
+  fp = fopen("C:\\source\\bigfile.txt", "rb+");
+  rc = EncryptFileInit((char*)private_key, (char*)shared_secret, "e-bigfile.dat");
+  for (;;) {
+    inlen = fread(inbuf, 1, 131072, fp);
+    if (inlen <= 0) break;
+    rc = EncryptFileUpdate(inbuf, inlen);
   }
-	
+  rc = EncryptFileFinal();
+
+  //fsize = EncryptFileX(encrypted, fsize, (char*) private_key, (char*)shared_secret, "e-bigfile.dat");
+
+  data = DecryptFileX((char*)private_key, (char*)shared_secret, "e-bigfile.dat", &data_size);
+  fdone = fopen("d-bigfile.txt", "wb");
+  fwrite(data, 1, data_size, fdone);
+  fclose(fdone);
+}
+
+void test_2(const char* private_key, const char* shared_secret) {
+  /* "opaque" encryption, decryption ctx structures that libcrypto uses to record status of enc/dec operations */
+
+  char* secret = NULL;
+  unsigned char *key_data = NULL;
+  unsigned char* decrypted;
+  unsigned char* encrypted;
+  char* iv = NULL;
+  HANDLE hFile;
+  int fsize;
+  int key_data_len = 64;
+  unsigned long bytes_processed;
+
+  secret = get_shared_secret(private_key, shared_secret);
+
+  if (secret == NULL) return -1;
+
+  extract_shared_secret(secret, key_data, iv);
+
+  /* gen key and iv. init the cipher ctx object */
+  if (aes_init(key_data, key_data_len, NULL, iv, &en, &de)) {
+    printf("Couldn't initialize AES cipher\n");
+    return -1;
+  }
+
+  hFile = CreateFile("e-bigfile.dat",
+    GENERIC_WRITE | GENERIC_READ,
+    FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE,
+    0,
+    OPEN_EXISTING,
+    FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH,
+    NULL
+  );
+
+  if (hFile == INVALID_HANDLE_VALUE) {
+    //
+  }
+
   fsize = GetFileSize(hFile, NULL);
-	encrypted = (unsigned char*) malloc(fsize);
-	ReadFile(hFile, encrypted, fsize, &bytes_processed, NULL); 
-	CloseHandle(hFile);
-	
-	decrypted = (unsigned char *)aes_decrypt(&de, encrypted, &fsize);
+  encrypted = (unsigned char*)malloc(fsize);
+  ReadFile(hFile, encrypted, fsize, &bytes_processed, NULL);
+  CloseHandle(hFile);
 
-	hFile = CreateFile("dd-bigfile.dat",                // name of the write
-    GENERIC_WRITE|GENERIC_READ,  // open for writing/read
-    FILE_SHARE_DELETE|FILE_SHARE_READ|FILE_SHARE_WRITE,   // share all
-    0,                   // new security
-    CREATE_ALWAYS,          // overwrite FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,  // normal file
-    FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,
-	  NULL
-  );  // attr. template
-    
-	WriteFile(hFile, decrypted, fsize, &bytes_processed, NULL);
-	CloseHandle(hFile);
+  decrypted = (unsigned char *)aes_decrypt(&de, encrypted, &fsize);
 
-	free(encrypted);
+  hFile = CreateFile("dd-bigfile.dat",
+    GENERIC_WRITE | GENERIC_READ,
+    FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE,
+    0,
+    CREATE_ALWAYS,
+    FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH,
+    NULL
+  );
+
+  WriteFile(hFile, decrypted, fsize, &bytes_processed, NULL);
+  CloseHandle(hFile);
+
+  free(encrypted);
   free(decrypted);
 
-	EVP_CIPHER_CTX_cleanup(&en);
-	EVP_CIPHER_CTX_cleanup(&de);
+  EVP_CIPHER_CTX_cleanup(&en);
+  EVP_CIPHER_CTX_cleanup(&de);
+}
 
+int main(int argc, char **argv) {
+  const char* shared_secret = "resources\\key-new.enc";
+  const char* private_key = "resources\\privatekey.pem";
+
+  // test_1(private_key, shared_secret);
+
+  test_2(private_key, shared_secret);
 	return 0;
 }
