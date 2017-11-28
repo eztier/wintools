@@ -18,5 +18,8 @@
     <ClInclude Include="src\common.h">
       <Filter>Source Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\log_message.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

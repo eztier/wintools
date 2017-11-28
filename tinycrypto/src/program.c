@@ -9,72 +9,15 @@
   Existing functions have been modified and additional functions added to support Windows and designed to run with C# applications.  
 **/
 #include "program.h"
+#include "log_message.h"
 
 // Logging
-SYSTEMTIME st;
-char timestamp[20];
+// SYSTEMTIME st;
+// char timestamp[20];
 char* ddir = "#log";
 char* dname = "tinycrypto";
 // FILE* logfile;
 // char logfile_path[500];
-
-void get_current_time(SYSTEMTIME* st, char*  timestamp) {
-  GetLocalTime(st);
-  sprintf(timestamp, "%04d-%02d-%02d %02d:%02d:%02d", st->wYear, st->wMonth, st->wDay, st->wHour, st->wMinute, st->wSecond);
-}
-
-void get_current_date(SYSTEMTIME* st, char*  timestamp) {
-  GetLocalTime(st);
-  sprintf(timestamp, "%04d-%02d-%02d", st->wYear, st->wMonth, st->wDay);
-}
-
-char* setupLogging(const char* logfolder, const char* logfilename, char* logfullpath) {
-  if (GetFileAttributes(logfolder) == INVALID_FILE_ATTRIBUTES)
-    CreateDirectory(logfolder, NULL);
-
-  get_current_date(&st, timestamp);
-
-  sprintf(logfullpath, "%s\\%s$%s.log", logfolder, logfilename, timestamp);
-
-  return logfullpath;
-}
-
-void LogError(const char* logfolder, const char* logfilename, char* lpszFunction, unsigned long dw) {
-  // Retrieve the system error message for the last-error code
-  void* lpMsgBuf;
-  void* lpDisplayBuf;
-  
-  FormatMessage(
-    FORMAT_MESSAGE_ALLOCATE_BUFFER |
-    FORMAT_MESSAGE_FROM_SYSTEM |
-    FORMAT_MESSAGE_IGNORE_INSERTS,
-    NULL,
-    dw,
-    MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-    (char*)&lpMsgBuf,
-    0, NULL);
-
-  lpDisplayBuf = (void*)LocalAlloc(LMEM_ZEROINIT,
-    (lstrlen((const char*)lpMsgBuf) + lstrlen((const char*)lpszFunction) + 40) * sizeof(char));
-
-  StringCchPrintf((char*)lpDisplayBuf,
-    LocalSize(lpDisplayBuf) / sizeof(char),
-    TEXT("%s failed with error %d: %s"),
-    lpszFunction, dw, lpMsgBuf);
-  
-  get_current_time(&st, timestamp);
-
-  // Create log file path.
-  char lpath[500];
-  setupLogging(ddir, dname, lpath);
-
-  FILE* logfile = fopen(lpath, "w+");
-  fprintf(logfile, "%s %s\n", timestamp, (const char*)lpDisplayBuf);
-  fclose(logfile);
-
-  LocalFree(lpMsgBuf);
-  LocalFree(lpDisplayBuf);
-}
 
 //global vars
 unsigned char* decrypted_data = NULL;
@@ -211,6 +154,10 @@ char* get_shared_secret(const char* keyfile, const char* ssecret) {
 	RSA* rsa = NULL;
 	BOOLEAN succeeded;
 	int decrypted_sz = 0;
+  char* msg = NULL;
+  unsigned long dw = 0;
+
+  LogMessage(ddir, dname, "get_shared_secret() called", 0);
 
 	// Get the private key
 	hFile = CreateFile(keyfile,
@@ -223,10 +170,10 @@ char* get_shared_secret(const char* keyfile, const char* ssecret) {
   );
   
   if (hFile == INVALID_HANDLE_VALUE) {
-    unsigned long dw = GetLastError();
-    char* msg = malloc(strlen(keyfile) + 20);
+    dw = GetLastError();
+    msg = malloc(strlen(keyfile) + 20);
     sprintf(msg, "CreateFile(%s)", keyfile);
-    LogError(ddir, dname, msg, dw);
+    LogMessage(ddir, dname, msg, dw);
     free(msg);
     return retval;
   }
@@ -237,18 +184,18 @@ char* get_shared_secret(const char* keyfile, const char* ssecret) {
 	CloseHandle(hFile);
 
   if (!succeeded) {
-    unsigned long dw = GetLastError();
-    char* msg = malloc(strlen(keyfile) + 20);
+    dw = GetLastError();
+    msg = malloc(strlen(keyfile) + 20);
     sprintf(msg, "ReadFile(%s) failed", keyfile);
-    LogError(ddir, dname, msg, dw);
+    LogMessage(ddir, dname, msg, dw);
     free(msg);
     return retval;
   }
 	
 	bio = BIO_new(BIO_s_mem());
   if (bio == NULL) {
-    unsigned long dw = GetLastError();
-    LogError(ddir, dname, "BIO_new (bio is NULL)", dw);
+    dw = GetLastError();
+    LogMessage(ddir, dname, "BIO_new (bio is NULL)", dw);
     goto Cleanup;
   }
 
@@ -256,8 +203,8 @@ char* get_shared_secret(const char* keyfile, const char* ssecret) {
 	
 	rsa = PEM_read_bio_RSAPrivateKey(bio, NULL, NULL, NULL);
   if (rsa == NULL) {
-    unsigned long dw = GetLastError();
-    LogError(ddir, dname, "PEM_read_bio_RSAPrivateKey (rsa is NULL)", dw);
+    dw = GetLastError();
+    LogMessage(ddir, dname, "PEM_read_bio_RSAPrivateKey (rsa is NULL)", dw);
     goto Cleanup;
   }
 
@@ -272,10 +219,10 @@ char* get_shared_secret(const char* keyfile, const char* ssecret) {
   );
   
   if (hFile == INVALID_HANDLE_VALUE) {
-    unsigned long dw = GetLastError();
-    char* msg = malloc(strlen(ssecret) + 20);
+    dw = GetLastError();
+    msg = malloc(strlen(ssecret) + 20);
     sprintf(msg, "CreateFile(%s)", ssecret);
-    LogError(ddir, dname, msg, dw);
+    LogMessage(ddir, dname, msg, dw);
     free(msg);
     goto Cleanup;
   }
@@ -286,24 +233,37 @@ char* get_shared_secret(const char* keyfile, const char* ssecret) {
 	CloseHandle(hFile);
 
   if (!succeeded) {
-    unsigned long dw = GetLastError();
-    char* msg = malloc(strlen(ssecret) + 20);
+    dw = GetLastError();
+    msg = malloc(strlen(ssecret) + 20);
     sprintf(msg, "ReadFile(%s) failed", ssecret);
-    LogError(ddir, dname, msg, dw);
+    LogMessage(ddir, dname, msg, dw);
     free(msg);
     goto Cleanup;
   }
 
 	retval = (char*) malloc(fsize);
+  // memset(retval, 0, fsize);
 	decrypted_sz = RSA_private_decrypt(fsize, secbuf, (unsigned char*)retval, rsa, RSA_PKCS1_PADDING); // != -1
-	if (decrypted_sz != -1) retval[decrypted_sz] = 0;
+  if (decrypted_sz != -1) {
+    msg = malloc(strlen(keyfile) + strlen(ssecret) + 50);
+    sprintf(msg, "RSA_private_decrypt succeeded. (key: %s secret: %s)", keyfile, ssecret);
+    LogMessage(ddir, dname, msg, 0);
+    free(msg);
+    retval[decrypted_sz] = 0;
+  } else {
+    dw = GetLastError();
+    msg = malloc(strlen(keyfile) + strlen(ssecret) + 50);
+    sprintf(msg, "RSA_private_decrypt failed. (key: %s secret: %s)", keyfile, ssecret);
+    LogMessage(ddir, dname, msg, dw);
+    free(msg);
+  }
 	
 Cleanup:
 	if (rsa != NULL) RSA_free(rsa);
 	if (bio != NULL) BIO_free(bio);
 	if (keybuf != NULL) free(keybuf);
 	if (secbuf != NULL) free(secbuf);
-
+  
 	return retval;
 }
 
@@ -341,6 +301,9 @@ unsigned char* DecryptFileX(char* private_key, char* shared_secret, char* filena
 	int key_data_len = 64; //must be 64 bytes
 	unsigned long bytes_processed;
   
+  unsigned long dw = 0;
+  char* msg = NULL;
+
 	secret = get_shared_secret(private_key, shared_secret);
 	if (secret == NULL) return NULL;
 	
@@ -348,8 +311,8 @@ unsigned char* DecryptFileX(char* private_key, char* shared_secret, char* filena
   
 	//gen key and iv. init the cipher ctx object
 	if (aes_init(key_data, key_data_len, NULL, iv, &en, &de)) {
-		unsigned long dw = GetLastError();
-    LogError(ddir, dname, "aes_init (Couldn't initialize AES cipher)", dw);
+		dw = GetLastError();
+    LogMessage(ddir, dname, "aes_init (Couldn't initialize AES cipher)", dw);
 		goto Cleanup;
 	}
 
@@ -363,10 +326,10 @@ unsigned char* DecryptFileX(char* private_key, char* shared_secret, char* filena
   );
     
 	if (hFile == INVALID_HANDLE_VALUE) {
-    unsigned long dw = GetLastError();
-    char* msg = malloc(strlen(filename) + 20);
+    dw = GetLastError();
+    msg = malloc(strlen(filename) + 20);
     sprintf(msg, "CreateFile(%s)", filename);
-    LogError(ddir, dname, msg, dw);
+    LogMessage(ddir, dname, msg, dw);
     free(msg);
     goto Cleanup;
   }
@@ -377,15 +340,21 @@ unsigned char* DecryptFileX(char* private_key, char* shared_secret, char* filena
 	CloseHandle(hFile);
 	
   if (!succeeded) {
-    unsigned long dw = GetLastError();
-    char* msg = malloc(strlen(filename) + 20);
+    dw = GetLastError();
+    msg = malloc(strlen(filename) + 20);
     sprintf(msg, "ReadFile(%s) failed", filename);
-    LogError(ddir, dname, msg, dw);
+    LogMessage(ddir, dname, msg, dw);
     free(msg);
     goto Cleanup;
   }
+
 	decrypted_data = (unsigned char *)aes_decrypt(&de, encrypted, &fsize);
 	*decrypted_size = fsize;
+
+  msg = malloc(strlen(filename) + 50);
+  sprintf(msg, "aes_decrypt() succeeded. (%s)", filename);
+  LogMessage(ddir, dname, msg, 0);
+  free(msg);
 	
 Cleanup:
 	EVP_CIPHER_CTX_cleanup(&en);
@@ -413,7 +382,7 @@ int EncryptFileInit(char* private_key, char* shared_secret, char* filename) {
 	//gen key and iv. init the cipher ctx object
 	if ((rc = aes_init(key_data, key_data_len, NULL, iv, &en, &de))) {
     unsigned long dw = GetLastError();
-    LogError(ddir, dname, "aes_init (Couldn't initialize AES cipher)", dw);
+    LogMessage(ddir, dname, "aes_init (Couldn't initialize AES cipher)", dw);
 		goto Cleanup;
 	}
 
@@ -512,7 +481,7 @@ int EncryptFileX(unsigned char* data, unsigned long datasize, char* private_key,
 	//gen key and iv. init the cipher ctx object
 	if (aes_init(key_data, key_data_len, NULL, iv, &en, &de)) {
     unsigned long dw = GetLastError();
-    LogError(ddir, dname, "aes_init (Couldn't initialize AES cipher)", dw);
+    LogMessage(ddir, dname, "aes_init (Couldn't initialize AES cipher)", dw);
 		goto Cleanup;
 	}
 
@@ -532,7 +501,7 @@ int EncryptFileX(unsigned char* data, unsigned long datasize, char* private_key,
     unsigned long dw = GetLastError();
     char* msg = malloc(strlen(filename) + 20);
     sprintf(msg, "CreateFile(%s)", filename);
-    LogError(ddir, dname, msg, dw);
+    LogMessage(ddir, dname, msg, dw);
     free(msg);
     goto Cleanup;
   }
@@ -578,10 +547,10 @@ void test_2(const char* private_key, const char* shared_secret) {
   /* "opaque" encryption, decryption ctx structures that libcrypto uses to record status of enc/dec operations */
 
   char* secret = NULL;
-  unsigned char *key_data = NULL;
+  unsigned char key_data[65];
   unsigned char* decrypted;
   unsigned char* encrypted;
-  char* iv = NULL;
+  char* iv[33];
   HANDLE hFile;
   int fsize;
   int key_data_len = 64;
@@ -638,12 +607,20 @@ void test_2(const char* private_key, const char* shared_secret) {
   EVP_CIPHER_CTX_cleanup(&de);
 }
 
+void test_3(char* private_key, char* shared_secret, char* encrypted_file) {
+  int sz = 0;
+  DecryptFileX(private_key, shared_secret, encrypted_file, &sz);
+}
+
 int main(int argc, char **argv) {
-  const char* shared_secret = "resources\\key-new.enc";
+  const char* shared_secret = "resources\\key-final.enc";
   const char* private_key = "resources\\privatekey.pem";
+  const char* encrypted_file = "resources\\security-enc.xml";
 
   // test_1(private_key, shared_secret);
 
   test_2(private_key, shared_secret);
+
+  test_3(private_key, shared_secret, encrypted_file);
 	return 0;
 }

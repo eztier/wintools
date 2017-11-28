@@ -1,12 +1,12 @@
 #include <windows.h>
-#include <strsafe.h>
+// #include <strsafe.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 
-const char* tinycryto_version = "0.5.1";
+const char* tinycryto_version = "0.5.2";
 
 extern unsigned char* decrypted_data;
 
