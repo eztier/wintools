@@ -9,15 +9,17 @@
   Existing functions have been modified and additional functions added to support Windows and designed to run with C# applications.  
 **/
 #include "program.h"
+
+#ifdef _DEBUG
 #include "log_message.h"
+#endif
 
 // Logging
 // SYSTEMTIME st;
 // char timestamp[20];
+
 char* ddir = "#log";
 char* dname = "tinycrypto";
-// FILE* logfile;
-// char logfile_path[500];
 
 //global vars
 unsigned char* decrypted_data = NULL;
@@ -157,7 +159,9 @@ char* get_shared_secret(const char* keyfile, const char* ssecret) {
   char* msg = NULL;
   unsigned long dw = 0;
 
+#ifdef _DEBUG
   LogMessage(ddir, dname, "get_shared_secret() called", 0);
+#endif
 
 	// Get the private key
 	hFile = CreateFile(keyfile,
@@ -170,11 +174,13 @@ char* get_shared_secret(const char* keyfile, const char* ssecret) {
   );
   
   if (hFile == INVALID_HANDLE_VALUE) {
+#ifdef _DEBUG
     dw = GetLastError();
     msg = malloc(strlen(keyfile) + 20);
     sprintf(msg, "CreateFile(%s)", keyfile);
     LogMessage(ddir, dname, msg, dw);
     free(msg);
+#endif
     return retval;
   }
 
@@ -184,18 +190,22 @@ char* get_shared_secret(const char* keyfile, const char* ssecret) {
 	CloseHandle(hFile);
 
   if (!succeeded) {
+#ifdef _DEBUG
     dw = GetLastError();
     msg = malloc(strlen(keyfile) + 20);
     sprintf(msg, "ReadFile(%s) failed", keyfile);
     LogMessage(ddir, dname, msg, dw);
     free(msg);
+#endif
     return retval;
   }
 	
 	bio = BIO_new(BIO_s_mem());
   if (bio == NULL) {
+#ifdef _DEBUG
     dw = GetLastError();
     LogMessage(ddir, dname, "BIO_new (bio is NULL)", dw);
+#endif
     goto Cleanup;
   }
 
@@ -203,8 +213,10 @@ char* get_shared_secret(const char* keyfile, const char* ssecret) {
 	
 	rsa = PEM_read_bio_RSAPrivateKey(bio, NULL, NULL, NULL);
   if (rsa == NULL) {
+#ifdef _DEBUG
     dw = GetLastError();
     LogMessage(ddir, dname, "PEM_read_bio_RSAPrivateKey (rsa is NULL)", dw);
+#endif
     goto Cleanup;
   }
 
@@ -219,11 +231,13 @@ char* get_shared_secret(const char* keyfile, const char* ssecret) {
   );
   
   if (hFile == INVALID_HANDLE_VALUE) {
+#ifdef _DEBUG
     dw = GetLastError();
     msg = malloc(strlen(ssecret) + 20);
     sprintf(msg, "CreateFile(%s)", ssecret);
     LogMessage(ddir, dname, msg, dw);
     free(msg);
+#endif
     goto Cleanup;
   }
 
@@ -233,11 +247,13 @@ char* get_shared_secret(const char* keyfile, const char* ssecret) {
 	CloseHandle(hFile);
 
   if (!succeeded) {
+#ifdef _DEBUG
     dw = GetLastError();
     msg = malloc(strlen(ssecret) + 20);
     sprintf(msg, "ReadFile(%s) failed", ssecret);
     LogMessage(ddir, dname, msg, dw);
     free(msg);
+#endif
     goto Cleanup;
   }
 
@@ -245,17 +261,21 @@ char* get_shared_secret(const char* keyfile, const char* ssecret) {
   // memset(retval, 0, fsize);
 	decrypted_sz = RSA_private_decrypt(fsize, secbuf, (unsigned char*)retval, rsa, RSA_PKCS1_PADDING); // != -1
   if (decrypted_sz != -1) {
+#ifdef _DEBUG
     msg = malloc(strlen(keyfile) + strlen(ssecret) + 50);
     sprintf(msg, "RSA_private_decrypt succeeded. (key: %s secret: %s)", keyfile, ssecret);
     LogMessage(ddir, dname, msg, 0);
     free(msg);
+#endif
     retval[decrypted_sz] = 0;
   } else {
+#ifdef _DEBUG
     dw = GetLastError();
     msg = malloc(strlen(keyfile) + strlen(ssecret) + 50);
     sprintf(msg, "RSA_private_decrypt failed. (key: %s secret: %s)", keyfile, ssecret);
     LogMessage(ddir, dname, msg, dw);
     free(msg);
+#endif
   }
 	
 Cleanup:
@@ -311,8 +331,10 @@ unsigned char* DecryptFileX(char* private_key, char* shared_secret, char* filena
   
 	//gen key and iv. init the cipher ctx object
 	if (aes_init(key_data, key_data_len, NULL, iv, &en, &de)) {
+#ifdef _DEBUG
 		dw = GetLastError();
     LogMessage(ddir, dname, "aes_init (Couldn't initialize AES cipher)", dw);
+#endif
 		goto Cleanup;
 	}
 
@@ -326,11 +348,13 @@ unsigned char* DecryptFileX(char* private_key, char* shared_secret, char* filena
   );
     
 	if (hFile == INVALID_HANDLE_VALUE) {
+#ifdef _DEBUG
     dw = GetLastError();
     msg = malloc(strlen(filename) + 20);
     sprintf(msg, "CreateFile(%s)", filename);
     LogMessage(ddir, dname, msg, dw);
     free(msg);
+#endif
     goto Cleanup;
   }
 	
@@ -340,21 +364,25 @@ unsigned char* DecryptFileX(char* private_key, char* shared_secret, char* filena
 	CloseHandle(hFile);
 	
   if (!succeeded) {
+#ifdef _DEBUG
     dw = GetLastError();
     msg = malloc(strlen(filename) + 20);
     sprintf(msg, "ReadFile(%s) failed", filename);
     LogMessage(ddir, dname, msg, dw);
     free(msg);
+#endif
     goto Cleanup;
   }
 
 	decrypted_data = (unsigned char *)aes_decrypt(&de, encrypted, &fsize);
 	*decrypted_size = fsize;
 
+#ifdef _DEBUG
   msg = malloc(strlen(filename) + 50);
   sprintf(msg, "aes_decrypt() succeeded. (%s)", filename);
   LogMessage(ddir, dname, msg, 0);
   free(msg);
+#endif
 	
 Cleanup:
 	EVP_CIPHER_CTX_cleanup(&en);
@@ -381,8 +409,10 @@ int EncryptFileInit(char* private_key, char* shared_secret, char* filename) {
   
 	//gen key and iv. init the cipher ctx object
 	if ((rc = aes_init(key_data, key_data_len, NULL, iv, &en, &de))) {
+#ifdef _DEBUG
     unsigned long dw = GetLastError();
     LogMessage(ddir, dname, "aes_init (Couldn't initialize AES cipher)", dw);
+#endif
 		goto Cleanup;
 	}
 
@@ -480,8 +510,10 @@ int EncryptFileX(unsigned char* data, unsigned long datasize, char* private_key,
   
 	//gen key and iv. init the cipher ctx object
 	if (aes_init(key_data, key_data_len, NULL, iv, &en, &de)) {
+#ifdef _DEBUG
     unsigned long dw = GetLastError();
     LogMessage(ddir, dname, "aes_init (Couldn't initialize AES cipher)", dw);
+#endif
 		goto Cleanup;
 	}
 
@@ -498,11 +530,13 @@ int EncryptFileX(unsigned char* data, unsigned long datasize, char* private_key,
   );
     
 	if (hFile == INVALID_HANDLE_VALUE) {
+#ifdef _DEBUG
     unsigned long dw = GetLastError();
     char* msg = malloc(strlen(filename) + 20);
     sprintf(msg, "CreateFile(%s)", filename);
     LogMessage(ddir, dname, msg, dw);
     free(msg);
+#endif
     goto Cleanup;
   }
 	

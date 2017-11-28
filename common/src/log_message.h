@@ -15,13 +15,20 @@ void get_current_date(SYSTEMTIME* st, char*  timestamp) {
 char* setupLogging(const char* logfolder, const char* logfilename, char* logfullpath) {
   SYSTEMTIME st;
   char timestamp[20];
+  char current_path[MAX_PATH];
+  char fullpath[1000];
 
-  if (GetFileAttributes(logfolder) == INVALID_FILE_ATTRIBUTES)
-    CreateDirectory(logfolder, NULL);
+  // GetModuleFileName(NULL, module_path, 1000);
+  GetCurrentDirectory(MAX_PATH, current_path);
+
+  sprintf(fullpath, "%s\\%s", current_path, logfolder);
+
+  if (GetFileAttributes(fullpath) == INVALID_FILE_ATTRIBUTES)
+    CreateDirectory(fullpath, NULL);
     
   get_current_date(&st, timestamp);
 
-  sprintf(logfullpath, "%s\\%s-%s.log", logfolder, logfilename, timestamp);
+  sprintf(logfullpath, "%s\\%s-%s.log", fullpath, logfilename, timestamp);
 
   return logfullpath;
 }

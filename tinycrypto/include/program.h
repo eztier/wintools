@@ -1,5 +1,4 @@
 #include <windows.h>
-// #include <strsafe.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
