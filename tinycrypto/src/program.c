@@ -14,10 +14,6 @@
 #include "log_message.h"
 #endif
 
-// Logging
-// SYSTEMTIME st;
-// char timestamp[20];
-
 char* ddir = "#log";
 char* dname = "tinycrypto";
 
@@ -165,11 +161,14 @@ char* get_shared_secret(const char* keyfile, const char* ssecret) {
 
 	// Get the private key
 	hFile = CreateFile(keyfile,
-    GENERIC_WRITE|GENERIC_READ,  // open for writing/read
-    FILE_SHARE_DELETE|FILE_SHARE_READ|FILE_SHARE_WRITE,  // share all
+    // GENERIC_WRITE|GENERIC_READ,  // open for writing/read
+    GENERIC_READ,
+    // FILE_SHARE_DELETE|FILE_SHARE_READ|FILE_SHARE_WRITE,  // share all
+    FILE_SHARE_READ,
     0,  // new security
     OPEN_EXISTING,  // normal file
-    FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,  // overwrite
+    // FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,  // overwrite
+    FILE_ATTRIBUTE_NORMAL,
 	  NULL // No attr template
   );
   
@@ -222,11 +221,14 @@ char* get_shared_secret(const char* keyfile, const char* ssecret) {
 
 	//do stuff with rsa and get the shared secret
 	hFile = CreateFile(ssecret,
-    GENERIC_WRITE|GENERIC_READ,
-    FILE_SHARE_DELETE|FILE_SHARE_READ|FILE_SHARE_WRITE,
+    // GENERIC_WRITE|GENERIC_READ,
+    GENERIC_READ,
+    // FILE_SHARE_DELETE|FILE_SHARE_READ|FILE_SHARE_WRITE,
+    FILE_SHARE_READ,
     0,
     OPEN_EXISTING,
-    FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,
+    // FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,
+    FILE_ATTRIBUTE_NORMAL,
 	  NULL
   );
   
@@ -339,11 +341,14 @@ unsigned char* DecryptFileX(char* private_key, char* shared_secret, char* filena
 	}
 
 	hFile = CreateFile(filename,
-    GENERIC_WRITE|GENERIC_READ,
-    FILE_SHARE_DELETE|FILE_SHARE_READ|FILE_SHARE_WRITE,
+    // GENERIC_WRITE|GENERIC_READ,
+    GENERIC_READ,
+    // FILE_SHARE_DELETE|FILE_SHARE_READ|FILE_SHARE_WRITE,
+    FILE_SHARE_READ,
     0,
     OPEN_EXISTING,
-    FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,
+    // FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,
+    FILE_ATTRIBUTE_NORMAL,
 	  NULL
   );
     
