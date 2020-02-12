@@ -21,3 +21,6 @@ intermediate
 **/audit24
 **/resources/
 **/*log/
+**/testprogram
+**/resources
+**/*.dat

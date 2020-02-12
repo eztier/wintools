@@ -8,8 +8,13 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
+
+#ifndef EVP_CIPHER_CTX_reset
+#define EVP_CIPHER_CTX_reset(c) EVP_CIPHER_CTX_init(c)
+#endif
 
 const char* tinycryto_version = "0.5.2";
 
@@ -19,7 +24,7 @@ int aes_init(unsigned char *key_data, int key_data_len, unsigned char *salt, cha
 unsigned char *aes_encrypt(EVP_CIPHER_CTX *e, unsigned char *plaintext, int *len);
 int set_hex(char *in, unsigned char *out, int size);
 DLLEXPORT char* get_shared_secret(const char* keyfile, const char* ssecret);
-void extract_shared_secret(char* secret, unsigned char* key_data, char* iv);
+void extract_shared_secret(char* secret, unsigned char** key_data, char** iv);
 
 // small file encrypt
 DLLEXPORT int EncryptFileX(unsigned char* data, unsigned long datasize, char* private_key, char* shared_secret, char* filename);
@@ -30,3 +35,5 @@ DLLEXPORT int EncryptFileFinal();
 
 DLLEXPORT unsigned char* DecryptFileX(char* private_key, char* shared_secret, char* filename, int* decrypted_size);
 DLLEXPORT void FreeDecryptedMemory();
+
+typedef bool BOOLEAN;

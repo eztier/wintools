@@ -6,11 +6,39 @@
   The following is based on the work of Saju Pillai:
   https://github.com/saju/misc/blob/master/misc/openssl_aes.c
 
+  EVP_CIPHER_CTX_cleanup() no longer exists in OpenSSL 1.1.0.
+  EVP_CIPHER_CTX_init() is just a macro for EVP_CIPHER_CTX_reset() in 1.1.0.
+
+  For allocating memory:
+  1.0.2 man pages say:
+  EVP_CIPHER_CTX ctx;
+  EVP_CIPHER_CTX_init(&ctx);
+  
+  and 1.1.0 man pages say:
+  EVP_CIPHER_CTX *ctx;
+  ctx = EVP_CIPHER_CTX_new();
+
+  For freeing the memory:
+  1.0.2 man pages:
+
+  EVP_CIPHER_CTX_cleanup(&ctx);
+  1.1.0 man pages:
+
+  EVP_CIPHER_CTX_free(ctx);
+
+  V1.0.2
+  export LD_LIBRARY_PATH=/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
+  copy v 1.0.2 version of /openssl/evp.h into local include because /usr/local/include of v1.1 takes precendence.
+  gcc -D _DEBUG -Wall -Iinclude src/program.c -L/lib/x86_64-linux-gnu -l:libcrypto.so.1.0.0 -o testprogram 
+
+  V1.1.0
+  gcc -D _DEBUG -Wall -Iinclude src/program.c -L/usr/local/lib -lcrypto -o testprogram 
+
   Existing functions have been modified and additional functions added to support Windows and designed to run with C# applications.  
 **/
 #include "program.h"
 
-#ifdef _DEBUG
+#if defined (_DEBUG) && defined (_WIN32)
 #include "log_message.h"
 #endif
 
@@ -21,16 +49,17 @@ char* dname = "tinycrypto";
 unsigned char* decrypted_data = NULL;
 
 // "opaque" encryption, decryption ctx structures that libcrypto uses to record status of enc/dec operations
-EVP_CIPHER_CTX en, de;
+EVP_CIPHER_CTX *en, *de;
 unsigned char inbuf[131072];
 unsigned char outbuf[131072 + EVP_MAX_BLOCK_LENGTH];
 int inlen, outlen;
 unsigned long bytesWritten;
 	
-//exported dll not working with FILE*
-FILE* fp = NULL;
-
+#ifdef _WIN32
 static HANDLE hFile = NULL;
+#else
+static FILE* fp = NULL;
+#endif
 
 /**
  * Create an 256 bit key and IV using the supplied key_data. salt can be added for taste.
@@ -142,8 +171,32 @@ int set_hex(char *in, unsigned char *out, int size) {
 	return(1);
 }
 
+long read_all(const char* filename, unsigned char** buffer) {
+  FILE* f;
+
+  f = fopen(filename, "r");
+
+  if (f == NULL) {
+    #ifdef _DEBUG
+    fprintf(stderr, "Error: fopen(%s)\n", filename);
+    #endif
+    return 0;
+  }
+
+  fseek(f, 0, SEEK_END);
+  long fsize = ftell(f);
+  fseek(f, 0, SEEK_SET);
+
+  *buffer = (unsigned char*) malloc(fsize + 1);
+  fread(*buffer, 1, fsize, f);
+  fclose(f);
+
+  (*buffer)[fsize] = 0;
+
+  return fsize;
+}
+
 char* get_shared_secret(const char* keyfile, const char* ssecret) {
-	HANDLE hFile = NULL;
 	unsigned long fsize = 0, bytes_processed = 0;
 	unsigned char* keybuf = NULL;
 	unsigned char* secbuf = NULL;
@@ -155,12 +208,19 @@ char* get_shared_secret(const char* keyfile, const char* ssecret) {
   char* msg = NULL;
   unsigned long dw = 0;
 
-#ifdef _DEBUG
-  LogMessage(ddir, dname, "get_shared_secret() called", 0);
+#if defined (_DEBUG)
+#if defined (_WIN32)  
+  LogMessage(ddir, dname, "get_shared_secret() called.", 0);
+#else
+  printf("get_shared_secret() called.\n");
+#endif
 #endif
 
 	// Get the private key
-	hFile = CreateFile(keyfile,
+#ifdef _WIN32	
+  HANDLE hFile = NULL;
+	
+  hFile = CreateFile(keyfile,
     // GENERIC_WRITE|GENERIC_READ,  // open for writing/read
     GENERIC_READ,
     // FILE_SHARE_DELETE|FILE_SHARE_READ|FILE_SHARE_WRITE,  // share all
@@ -173,13 +233,13 @@ char* get_shared_secret(const char* keyfile, const char* ssecret) {
   );
   
   if (hFile == INVALID_HANDLE_VALUE) {
-#ifdef _DEBUG
+  #ifdef _DEBUG
     dw = GetLastError();
     msg = malloc(strlen(keyfile) + 20);
     sprintf(msg, "CreateFile(%s)", keyfile);
     LogMessage(ddir, dname, msg, dw);
     free(msg);
-#endif
+  #endif
     return retval;
   }
 
@@ -189,37 +249,55 @@ char* get_shared_secret(const char* keyfile, const char* ssecret) {
 	CloseHandle(hFile);
 
   if (!succeeded) {
-#ifdef _DEBUG
+  #if defined (_DEBUG)
     dw = GetLastError();
     msg = malloc(strlen(keyfile) + 20);
     sprintf(msg, "ReadFile(%s) failed", keyfile);
     LogMessage(ddir, dname, msg, dw);
     free(msg);
-#endif
+  #endif
     return retval;
   }
-	
+#else
+  fsize = read_all(keyfile, &keybuf);
+
+  if (fsize < 1)
+    return retval;
+#endif
+
 	bio = BIO_new(BIO_s_mem());
+  
   if (bio == NULL) {
-#ifdef _DEBUG
+    #if defined (_DEBUG)
+    #if defined (_WIN32)
     dw = GetLastError();
     LogMessage(ddir, dname, "BIO_new (bio is NULL)", dw);
-#endif
+    #else
+    printf("BIO_new (bio is NULL)\n");
+    #endif
+    #endif
     goto Cleanup;
   }
 
 	BIO_write(bio, keybuf, fsize);
-	
+  
 	rsa = PEM_read_bio_RSAPrivateKey(bio, NULL, NULL, NULL);
   if (rsa == NULL) {
-#ifdef _DEBUG
+    #ifdef _DEBUG
+    #if defined (_WIN32)
     dw = GetLastError();
     LogMessage(ddir, dname, "PEM_read_bio_RSAPrivateKey (rsa is NULL)", dw);
-#endif
+    #else
+    printf("PEM_read_bio_RSAPrivateKey (rsa is NULL)\n");
+    #endif
+    #endif
+
     goto Cleanup;
   }
 
-	//do stuff with rsa and get the shared secret
+//do stuff with rsa and get the shared secret
+#ifdef _WIN32
+  HANDLE hFile = NULL;
 	hFile = CreateFile(ssecret,
     // GENERIC_WRITE|GENERIC_READ,
     GENERIC_READ,
@@ -233,13 +311,13 @@ char* get_shared_secret(const char* keyfile, const char* ssecret) {
   );
   
   if (hFile == INVALID_HANDLE_VALUE) {
-#ifdef _DEBUG
+  #ifdef _DEBUG
     dw = GetLastError();
     msg = malloc(strlen(ssecret) + 20);
     sprintf(msg, "CreateFile(%s)", ssecret);
     LogMessage(ddir, dname, msg, dw);
     free(msg);
-#endif
+  #endif
     goto Cleanup;
   }
 
@@ -249,37 +327,51 @@ char* get_shared_secret(const char* keyfile, const char* ssecret) {
 	CloseHandle(hFile);
 
   if (!succeeded) {
-#ifdef _DEBUG
+  #ifdef _DEBUG
     dw = GetLastError();
     msg = malloc(strlen(ssecret) + 20);
     sprintf(msg, "ReadFile(%s) failed", ssecret);
     LogMessage(ddir, dname, msg, dw);
     free(msg);
-#endif
+  #endif
     goto Cleanup;
   }
+#else
+  fsize = read_all(ssecret, &secbuf);
 
-	retval = (char*) malloc(fsize);
+  if (fsize < 1)
+    goto Cleanup;
+#endif
+
+  retval = (char*) malloc(fsize);
   // memset(retval, 0, fsize);
 	decrypted_sz = RSA_private_decrypt(fsize, secbuf, (unsigned char*)retval, rsa, RSA_PKCS1_PADDING); // != -1
   if (decrypted_sz != -1) {
-#ifdef _DEBUG
+  #ifdef _DEBUG
+  #ifdef _WIN32
     msg = malloc(strlen(keyfile) + strlen(ssecret) + 50);
     sprintf(msg, "RSA_private_decrypt succeeded. (key: %s secret: %s)", keyfile, ssecret);
     LogMessage(ddir, dname, msg, 0);
     free(msg);
-#endif
+  #else
+    printf("RSA_private_decrypt succeeded. (key: %s secret: %s)\n", keyfile, ssecret);  
+  #endif
+  #endif
     retval[decrypted_sz] = 0;
   } else {
-#ifdef _DEBUG
+    #ifdef _DEBUG
+    #ifdef _WIN32
     dw = GetLastError();
     msg = malloc(strlen(keyfile) + strlen(ssecret) + 50);
     sprintf(msg, "RSA_private_decrypt failed. (key: %s secret: %s)", keyfile, ssecret);
     LogMessage(ddir, dname, msg, dw);
     free(msg);
-#endif
+    #else
+    printf("RSA_private_decrypt failed. (key: %s secret: %s)\n", keyfile, ssecret);
+    #endif
+    #endif
   }
-	
+
 Cleanup:
 	if (rsa != NULL) RSA_free(rsa);
 	if (bio != NULL) BIO_free(bio);
@@ -289,18 +381,24 @@ Cleanup:
 	return retval;
 }
 
-void extract_shared_secret(char* secret, unsigned char* key_data, char* iv) {
+void extract_shared_secret(char* secret, unsigned char** key_data, char** iv) {
 	char* str1 = NULL;
-	
+
 	/* extract first string from string sequence */
   str1 = strtok(secret, " ");
-	strncpy((char*)key_data, str1, 64);
-	key_data[64] = 0;
-	
+  printf("%s\n", str1);
+	strncpy((char*)*key_data, str1, 64);
+	(*key_data)[64] = 0;
+	printf("%s\n", *key_data);
+  sleep(1);
 	// get the second
 	str1 = strtok(NULL, " ");
-	strncpy(iv, str1, 32);
-	iv[32] = 0;    
+  printf("%s\n", str1);
+  
+	strncpy(*iv, str1, 32);
+	(*iv)[32] = 0;
+  printf("%s\n", *iv);
+  sleep(1);
 }
 
 void FreeDecryptedMemory() {
@@ -310,16 +408,16 @@ void FreeDecryptedMemory() {
 
 unsigned char* DecryptFileX(char* private_key, char* shared_secret, char* filename, int* decrypted_size) {
 	// "opaque" encryption, decryption ctx structures that libcrypto uses to record status of enc/dec operations
-	EVP_CIPHER_CTX en, de;
+	// EVP_CIPHER_CTX en, de;
 
 	char* secret = NULL;
 	char iv[33];
 	unsigned char key_data[65];
 	//unsigned char* decrypted = NULL;
 	unsigned char* encrypted = NULL;
-	BOOLEAN succeeded = FALSE;
-	HANDLE hFile = NULL;
-	int fsize;
+	BOOLEAN succeeded = false;
+	
+  int fsize;
 	int key_data_len = 64; //must be 64 bytes
 	unsigned long bytes_processed;
   
@@ -329,17 +427,27 @@ unsigned char* DecryptFileX(char* private_key, char* shared_secret, char* filena
 	secret = get_shared_secret(private_key, shared_secret);
 	if (secret == NULL) return NULL;
 	
+  printf("secret: %s\n", secret);
+
 	extract_shared_secret(secret, key_data, iv);
+
+  printf("key: %s iv: %s\n", key_data, iv);
   
 	//gen key and iv. init the cipher ctx object
 	if (aes_init(key_data, key_data_len, NULL, iv, &en, &de)) {
-#ifdef _DEBUG
-		dw = GetLastError();
+  #ifdef _DEBUG
+  #ifdef _WIN32
+    dw = GetLastError();
     LogMessage(ddir, dname, "aes_init (Couldn't initialize AES cipher)", dw);
-#endif
+  #else
+    printf("aes_init (Couldn't initialize AES cipher)\n");
+  #endif
+  #endif
 		goto Cleanup;
 	}
 
+#ifdef _WIN32
+  HANDLE hFile = NULL;
 	hFile = CreateFile(filename,
     // GENERIC_WRITE|GENERIC_READ,
     GENERIC_READ,
@@ -353,13 +461,13 @@ unsigned char* DecryptFileX(char* private_key, char* shared_secret, char* filena
   );
     
 	if (hFile == INVALID_HANDLE_VALUE) {
-#ifdef _DEBUG
+  #ifdef _DEBUG
     dw = GetLastError();
     msg = malloc(strlen(filename) + 20);
     sprintf(msg, "CreateFile(%s)", filename);
     LogMessage(ddir, dname, msg, dw);
     free(msg);
-#endif
+  #endif
     goto Cleanup;
   }
 	
@@ -378,15 +486,25 @@ unsigned char* DecryptFileX(char* private_key, char* shared_secret, char* filena
 #endif
     goto Cleanup;
   }
+#else
+  fsize = read_all(filename, &encrypted);
+
+  if (fsize < 1)
+    goto Cleanup;
+#endif
 
 	decrypted_data = (unsigned char *)aes_decrypt(&de, encrypted, &fsize);
 	*decrypted_size = fsize;
 
 #ifdef _DEBUG
+#ifdef _WIN32
   msg = malloc(strlen(filename) + 50);
   sprintf(msg, "aes_decrypt() succeeded. (%s)", filename);
   LogMessage(ddir, dname, msg, 0);
   free(msg);
+#else
+  printf("aes_decrypt() succeeded. (%s)\n", filename);
+#endif
 #endif
 	
 Cleanup:
@@ -403,7 +521,7 @@ int EncryptFileInit(char* private_key, char* shared_secret, char* filename) {
 	char* secret = NULL;
 	char iv[33];
 	unsigned char key_data[65];
-	BOOLEAN succeeded = FALSE;
+	BOOLEAN succeeded = false;
 	int key_data_len = 64; //must be 64 bytes
 	int rc;
 
@@ -414,16 +532,21 @@ int EncryptFileInit(char* private_key, char* shared_secret, char* filename) {
   
 	//gen key and iv. init the cipher ctx object
 	if ((rc = aes_init(key_data, key_data_len, NULL, iv, &en, &de))) {
-#ifdef _DEBUG
+  #ifdef _DEBUG
+  #ifdef _WIN32  
     unsigned long dw = GetLastError();
     LogMessage(ddir, dname, "aes_init (Couldn't initialize AES cipher)", dw);
-#endif
+  #else
+    printf("aes_init (Couldn't initialize AES cipher)\n");
+  #endif
+  #endif
 		goto Cleanup;
 	}
 
 	/* allows reusing of 'e' for multiple encryption cycles */
 	rc = EVP_EncryptInit_ex(&en, NULL, NULL, NULL, NULL);
 
+#ifdef _WIN32
 	hFile = CreateFile(filename,
     GENERIC_WRITE|GENERIC_READ,
     FILE_SHARE_DELETE|FILE_SHARE_READ|FILE_SHARE_WRITE,
@@ -447,6 +570,13 @@ int EncryptFileInit(char* private_key, char* shared_secret, char* filename) {
 	
   if (hFile == NULL) rc = -2;
 	return rc;
+#else
+  fp = fopen(filename, "w");
+  if (fp == NULL)
+    return -1;
+  else
+    return rc;
+#endif
 	
 Cleanup:
 	EVP_CIPHER_CTX_cleanup(&en);
@@ -466,9 +596,14 @@ int EncryptFileUpdate(unsigned char* data, unsigned long datasize) {
 		return;
     }
 	
+  #ifdef _WIN32
 	WriteFile(hFile, outbuf, outlen, &bytesWritten, NULL);
-	
 	rc = bytesWritten;
+	#else
+  fwrite(outbuf, 1, outlen, fp);
+  rc = outlen;
+  #endif
+
 	return rc;
 }
 
@@ -482,27 +617,32 @@ int EncryptFileFinal() {
 		return;
   }
   
+#ifdef _WIN32  
   WriteFile(hFile, outbuf, outlen, &bytesWritten, NULL);
+	rc = bytesWritten;
 	CloseHandle(hFile);
+#else
+  fwrite(outbuf, 1, outlen, fp);
+  rc = outlen;
+  fclose(fp);
+#endif
 
 	EVP_CIPHER_CTX_cleanup(&en);
 	EVP_CIPHER_CTX_cleanup(&de);
 
-	rc = bytesWritten;
 	return rc;
 }
 
 int EncryptFileX(unsigned char* data, unsigned long datasize, char* private_key, char* shared_secret, char* filename) {
 	// "opaque" encryption, decryption ctx structures that libcrypto uses to record status of enc/dec operations
-	EVP_CIPHER_CTX en, de;
+	// EVP_CIPHER_CTX en, de;
 
 	char* secret = NULL;
 	char iv[33];
 	unsigned char key_data[65];
 	//unsigned char* decrypted = NULL;
 	unsigned char* encrypted = NULL;
-	BOOLEAN succeeded = FALSE;
-	HANDLE hFile = NULL;
+	BOOLEAN succeeded = false;
 	int dsize;
 	int fsize = dsize = datasize;
 	int key_data_len = 64; //must be 64 bytes
@@ -516,15 +656,21 @@ int EncryptFileX(unsigned char* data, unsigned long datasize, char* private_key,
 	//gen key and iv. init the cipher ctx object
 	if (aes_init(key_data, key_data_len, NULL, iv, &en, &de)) {
 #ifdef _DEBUG
-    unsigned long dw = GetLastError();
-    LogMessage(ddir, dname, "aes_init (Couldn't initialize AES cipher)", dw);
+#ifdef _WIN32
+  unsigned long dw = GetLastError();
+  LogMessage(ddir, dname, "aes_init (Couldn't initialize AES cipher)", dw);
+#else
+  printf("aes_init (Couldn't initialize AES cipher)\n");
+#endif
 #endif
 		goto Cleanup;
 	}
 
   encrypted = aes_encrypt(&en, data, &fsize);
 	
-  //export the file
+  //export the file.
+#ifdef _WIN32
+	HANDLE hFile = NULL;
 	hFile = CreateFile(filename,
     GENERIC_WRITE|GENERIC_READ,
     FILE_SHARE_DELETE|FILE_SHARE_READ|FILE_SHARE_WRITE,
@@ -547,7 +693,16 @@ int EncryptFileX(unsigned char* data, unsigned long datasize, char* private_key,
 	
 	WriteFile(hFile, encrypted, fsize, &bytes_processed, NULL);	
 	CloseHandle(hFile);
-	
+#else
+  FILE* f = fopen(filename, "w");
+
+  if (f == NULL)
+    goto Cleanup;
+
+  fwrite(encrypted, 1, fsize, f);
+  fclose(f);
+#endif
+
 Cleanup:
 	EVP_CIPHER_CTX_cleanup(&en);
 	EVP_CIPHER_CTX_cleanup(&de);
@@ -582,7 +737,7 @@ void test_1(const char* private_key, const char* shared_secret) {
   fclose(fdone);
 }
 
-void test_2(const char* private_key, const char* shared_secret) {
+void test_2(const char* private_key, const char* shared_secret, const char* encrypted_file) {
   /* "opaque" encryption, decryption ctx structures that libcrypto uses to record status of enc/dec operations */
 
   char* secret = NULL;
@@ -590,16 +745,25 @@ void test_2(const char* private_key, const char* shared_secret) {
   unsigned char* decrypted;
   unsigned char* encrypted;
   char* iv[33];
-  HANDLE hFile;
   int fsize;
   int key_data_len = 64;
   unsigned long bytes_processed;
 
   secret = get_shared_secret(private_key, shared_secret);
 
-  if (secret == NULL) return -1;
+  printf("secret: %s\n", secret);
+  sleep(1);
 
-  extract_shared_secret(secret, key_data, iv);
+  if (secret == NULL) {
+    fprintf(stderr, "Could not get secret.  Do these files exist? %s and %s\n", private_key, shared_secret);
+    return -1;
+  }
+
+  extract_shared_secret(secret, &key_data, &iv);
+
+  printf("key_data: %s\n key_data_len: %d\n iv: %s\n");
+
+  sleep(1);
 
   /* gen key and iv. init the cipher ctx object */
   if (aes_init(key_data, key_data_len, NULL, iv, &en, &de)) {
@@ -607,7 +771,10 @@ void test_2(const char* private_key, const char* shared_secret) {
     return -1;
   }
 
-  hFile = CreateFile("e-bigfile.dat",
+
+#ifdef _WIN32
+  HANDLE hFile;
+  hFile = CreateFile(encrypted_file,
     GENERIC_WRITE | GENERIC_READ,
     FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE,
     0,
@@ -635,9 +802,21 @@ void test_2(const char* private_key, const char* shared_secret) {
     FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH,
     NULL
   );
-
   WriteFile(hFile, decrypted, fsize, &bytes_processed, NULL);
   CloseHandle(hFile);
+#else
+  printf("Reading encrypted file.\n");
+  fsize = read_all(encrypted_file, &encrypted);
+  printf("fsize %d\n", fsize);
+  decrypted = (unsigned char *)aes_decrypt(&de, encrypted, &fsize);
+
+  printf("%s\n", decrypted);
+
+  FILE* f;
+  f = fopen("dd-bigfile.dat", "w");
+  fwrite(decrypted, 1, fsize, f);
+  fclose(f);
+#endif
 
   free(encrypted);
   free(decrypted);
@@ -652,14 +831,21 @@ void test_3(char* private_key, char* shared_secret, char* encrypted_file) {
 }
 
 int main(int argc, char **argv) {
+  #ifdef _WIN32
   const char* shared_secret = "resources\\key-final.enc";
   const char* private_key = "resources\\privatekey.pem";
   const char* encrypted_file = "resources\\security-enc.xml";
 
   // test_1(private_key, shared_secret);
-
-  test_2(private_key, shared_secret);
-
+  test_2(private_key, shared_secret, encrypted_file);
   test_3(private_key, shared_secret, encrypted_file);
-	return 0;
+	#else
+  const char* shared_secret = "resources/key-final.enc";
+  const char* private_key = "resources/privatekey.pem";
+  const char* encrypted_file = "resources/security-enc.xml";
+
+  test_2(private_key, shared_secret, encrypted_file);
+  // test_3(private_key, shared_secret, encrypted_file);	
+  #endif
+  return 0;
 }
