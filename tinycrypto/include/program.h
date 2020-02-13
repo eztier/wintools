@@ -11,6 +11,7 @@
 #include <stdbool.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
+#include "base64.h"
 
 #ifndef EVP_CIPHER_CTX_reset
 #define EVP_CIPHER_CTX_reset(c) EVP_CIPHER_CTX_init(c)

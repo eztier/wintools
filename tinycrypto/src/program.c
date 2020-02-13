@@ -27,12 +27,11 @@
   EVP_CIPHER_CTX_free(ctx);
 
   V1.0.2
-  export LD_LIBRARY_PATH=/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
   copy v 1.0.2 version of /openssl/evp.h into local include because /usr/local/include of v1.1 takes precendence.
-  gcc -D _DEBUG -Wall -Iinclude src/program.c -L/lib/x86_64-linux-gnu -l:libcrypto.so.1.0.0 -o testprogram 
+  gcc -D _DEBUG -Wall -Iinclude src/program.c src/base64.c -L/lib/x86_64-linux-gnu -l:libcrypto.so.1.0.0 -o testprogram 
 
   V1.1.0
-  gcc -D _DEBUG -Wall -Iinclude src/program.c -L/usr/local/lib -lcrypto -o testprogram 
+  gcc -D _DEBUG -Wall -Iinclude src/program.c src/base64.c -L/usr/local/lib -lcrypto -o testprogram 
 
   Existing functions have been modified and additional functions added to support Windows and designed to run with C# applications.  
 **/
@@ -49,7 +48,7 @@ char* dname = "tinycrypto";
 unsigned char* decrypted_data = NULL;
 
 // "opaque" encryption, decryption ctx structures that libcrypto uses to record status of enc/dec operations
-EVP_CIPHER_CTX *en, *de;
+EVP_CIPHER_CTX en, de;
 unsigned char inbuf[131072];
 unsigned char outbuf[131072 + EVP_MAX_BLOCK_LENGTH];
 int inlen, outlen;
@@ -124,13 +123,16 @@ unsigned char *aes_encrypt(EVP_CIPHER_CTX *e, unsigned char *plaintext, int *len
  * Decrypt *len bytes of ciphertext
  */
 unsigned char *aes_decrypt(EVP_CIPHER_CTX *e, unsigned char *ciphertext, int *len) {
+  
   /* plaintext will always be equal to or lesser than length of ciphertext*/
   int p_len = *len, f_len = 0, ret;
   unsigned char *plaintext = (unsigned char*) malloc(p_len);
+  memset(plaintext, 0,p_len);
   
   ret = EVP_DecryptInit_ex(e, NULL, NULL, NULL, NULL);
   ret = EVP_DecryptUpdate(e, plaintext, &p_len, ciphertext, *len);
   ret = EVP_DecryptFinal_ex(e, plaintext+p_len, &f_len);
+  
   *len = ret == 1 ? (p_len + f_len) : 0;
   
   return plaintext;
@@ -174,7 +176,7 @@ int set_hex(char *in, unsigned char *out, int size) {
 long read_all(const char* filename, unsigned char** buffer) {
   FILE* f;
 
-  f = fopen(filename, "r");
+  f = fopen(filename, "rb");
 
   if (f == NULL) {
     #ifdef _DEBUG
@@ -377,7 +379,8 @@ Cleanup:
 	if (bio != NULL) BIO_free(bio);
 	if (keybuf != NULL) free(keybuf);
 	if (secbuf != NULL) free(secbuf);
-  
+  printf("%d %d", decrypted_sz, fsize );
+
 	return retval;
 }
 
@@ -386,19 +389,13 @@ void extract_shared_secret(char* secret, unsigned char** key_data, char** iv) {
 
 	/* extract first string from string sequence */
   str1 = strtok(secret, " ");
-  printf("%s\n", str1);
-	strncpy((char*)*key_data, str1, 64);
+  strncpy((char*)*key_data, str1, 64);
 	(*key_data)[64] = 0;
-	printf("%s\n", *key_data);
-  sleep(1);
-	// get the second
+	
+  // get the second
 	str1 = strtok(NULL, " ");
-  printf("%s\n", str1);
-  
-	strncpy(*iv, str1, 32);
+  strncpy(*iv, str1, 32);
 	(*iv)[32] = 0;
-  printf("%s\n", *iv);
-  sleep(1);
 }
 
 void FreeDecryptedMemory() {
@@ -408,11 +405,11 @@ void FreeDecryptedMemory() {
 
 unsigned char* DecryptFileX(char* private_key, char* shared_secret, char* filename, int* decrypted_size) {
 	// "opaque" encryption, decryption ctx structures that libcrypto uses to record status of enc/dec operations
-	// EVP_CIPHER_CTX en, de;
+	EVP_CIPHER_CTX en, de;
 
 	char* secret = NULL;
-	char iv[33];
-	unsigned char key_data[65];
+	char* iv = malloc(33);
+	unsigned char* key_data = malloc(65);
 	//unsigned char* decrypted = NULL;
 	unsigned char* encrypted = NULL;
 	BOOLEAN succeeded = false;
@@ -429,7 +426,7 @@ unsigned char* DecryptFileX(char* private_key, char* shared_secret, char* filena
 	
   printf("secret: %s\n", secret);
 
-	extract_shared_secret(secret, key_data, iv);
+	extract_shared_secret(secret, &key_data, &iv);
 
   printf("key: %s iv: %s\n", key_data, iv);
   
@@ -513,14 +510,20 @@ Cleanup:
 	if (encrypted != NULL) 
 		free(encrypted);
 
+  if (iv != NULL) 
+    free(iv);
+
+  if (key_data != NULL)
+    free(key_data);  
+
 	//the library ALWAYS needs to get unloaded or else there will be memory leak
 	return decrypted_data;
 }
 
 int EncryptFileInit(char* private_key, char* shared_secret, char* filename) {
 	char* secret = NULL;
-	char iv[33];
-	unsigned char key_data[65];
+	char* iv = malloc(33);
+	unsigned char* key_data = malloc(65);
 	BOOLEAN succeeded = false;
 	int key_data_len = 64; //must be 64 bytes
 	int rc;
@@ -528,7 +531,7 @@ int EncryptFileInit(char* private_key, char* shared_secret, char* filename) {
 	secret = get_shared_secret(private_key, shared_secret);
 	if (secret == NULL) { rc = 0; return; }
 	
-	extract_shared_secret(secret, key_data, iv);
+	extract_shared_secret(secret, &key_data, &iv);
   
 	//gen key and iv. init the cipher ctx object
 	if ((rc = aes_init(key_data, key_data_len, NULL, iv, &en, &de))) {
@@ -581,6 +584,13 @@ int EncryptFileInit(char* private_key, char* shared_secret, char* filename) {
 Cleanup:
 	EVP_CIPHER_CTX_cleanup(&en);
 	EVP_CIPHER_CTX_cleanup(&de);
+
+  if (iv != NULL) 
+    free(iv);
+
+  if (key_data != NULL)
+    free(key_data);
+
 	return;
 }
 
@@ -635,11 +645,11 @@ int EncryptFileFinal() {
 
 int EncryptFileX(unsigned char* data, unsigned long datasize, char* private_key, char* shared_secret, char* filename) {
 	// "opaque" encryption, decryption ctx structures that libcrypto uses to record status of enc/dec operations
-	// EVP_CIPHER_CTX en, de;
+	EVP_CIPHER_CTX en, de;
 
 	char* secret = NULL;
-	char iv[33];
-	unsigned char key_data[65];
+	char* iv = malloc(33);
+	unsigned char* key_data = malloc(65);
 	//unsigned char* decrypted = NULL;
 	unsigned char* encrypted = NULL;
 	BOOLEAN succeeded = false;
@@ -651,7 +661,7 @@ int EncryptFileX(unsigned char* data, unsigned long datasize, char* private_key,
 	secret = get_shared_secret(private_key, shared_secret);
 	if (secret == NULL) return 0;
 	
-	extract_shared_secret(secret, key_data, iv);
+	extract_shared_secret(secret, &key_data, &iv);
   
 	//gen key and iv. init the cipher ctx object
 	if (aes_init(key_data, key_data_len, NULL, iv, &en, &de)) {
@@ -709,6 +719,12 @@ Cleanup:
 	if (encrypted != NULL) 
 		free(encrypted);
 
+  if (iv != NULL) 
+    free(iv);
+
+  if (key_data != NULL)
+    free(key_data);
+
 	//the library ALWAYS needs to get unloaded or else there will be memory leak
 	return fsize;
 }
@@ -739,12 +755,13 @@ void test_1(const char* private_key, const char* shared_secret) {
 
 void test_2(const char* private_key, const char* shared_secret, const char* encrypted_file) {
   /* "opaque" encryption, decryption ctx structures that libcrypto uses to record status of enc/dec operations */
+  EVP_CIPHER_CTX en, de;
 
   char* secret = NULL;
-  unsigned char key_data[65];
+  char* iv = malloc(33);
+  unsigned char* key_data = malloc(65);
   unsigned char* decrypted;
   unsigned char* encrypted;
-  char* iv[33];
   int fsize;
   int key_data_len = 64;
   unsigned long bytes_processed;
@@ -752,8 +769,7 @@ void test_2(const char* private_key, const char* shared_secret, const char* encr
   secret = get_shared_secret(private_key, shared_secret);
 
   printf("secret: %s\n", secret);
-  sleep(1);
-
+  
   if (secret == NULL) {
     fprintf(stderr, "Could not get secret.  Do these files exist? %s and %s\n", private_key, shared_secret);
     return -1;
@@ -761,9 +777,7 @@ void test_2(const char* private_key, const char* shared_secret, const char* encr
 
   extract_shared_secret(secret, &key_data, &iv);
 
-  printf("key_data: %s\n key_data_len: %d\n iv: %s\n");
-
-  sleep(1);
+  printf("key_data: %s\n\n iv: %s\n", key_data, iv);
 
   /* gen key and iv. init the cipher ctx object */
   if (aes_init(key_data, key_data_len, NULL, iv, &en, &de)) {
@@ -805,13 +819,13 @@ void test_2(const char* private_key, const char* shared_secret, const char* encr
   WriteFile(hFile, decrypted, fsize, &bytes_processed, NULL);
   CloseHandle(hFile);
 #else
-  printf("Reading encrypted file.\n");
+  printf("Reading encrypted file.\n%s\n\n", encrypted_file);
   fsize = read_all(encrypted_file, &encrypted);
   printf("fsize %d\n", fsize);
   decrypted = (unsigned char *)aes_decrypt(&de, encrypted, &fsize);
 
-  printf("%s\n", decrypted);
-
+  printf("%s\n%d\n", decrypted, fsize);
+  
   FILE* f;
   f = fopen("dd-bigfile.dat", "w");
   fwrite(decrypted, 1, fsize, f);
@@ -823,6 +837,12 @@ void test_2(const char* private_key, const char* shared_secret, const char* encr
 
   EVP_CIPHER_CTX_cleanup(&en);
   EVP_CIPHER_CTX_cleanup(&de);
+
+  if (iv != NULL) 
+    free(iv);
+
+  if (key_data != NULL)
+    free(key_data);
 }
 
 void test_3(char* private_key, char* shared_secret, char* encrypted_file) {
