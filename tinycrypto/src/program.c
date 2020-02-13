@@ -379,8 +379,7 @@ Cleanup:
 	if (bio != NULL) BIO_free(bio);
 	if (keybuf != NULL) free(keybuf);
 	if (secbuf != NULL) free(secbuf);
-  printf("%d %d", decrypted_sz, fsize );
-
+  
 	return retval;
 }
 
@@ -424,12 +423,8 @@ unsigned char* DecryptFileX(char* private_key, char* shared_secret, char* filena
 	secret = get_shared_secret(private_key, shared_secret);
 	if (secret == NULL) return NULL;
 	
-  printf("secret: %s\n", secret);
-
 	extract_shared_secret(secret, &key_data, &iv);
 
-  printf("key: %s iv: %s\n", key_data, iv);
-  
 	//gen key and iv. init the cipher ctx object
 	if (aes_init(key_data, key_data_len, NULL, iv, &en, &de)) {
   #ifdef _DEBUG
@@ -577,8 +572,11 @@ int EncryptFileInit(char* private_key, char* shared_secret, char* filename) {
   fp = fopen(filename, "w");
   if (fp == NULL)
     return -1;
-  else
+  else {
+    fclose(fp);
+    fp = fopen(filename, "a");
     return rc;
+  }
 #endif
 	
 Cleanup:
@@ -653,9 +651,8 @@ int EncryptFileX(unsigned char* data, unsigned long datasize, char* private_key,
 	//unsigned char* decrypted = NULL;
 	unsigned char* encrypted = NULL;
 	BOOLEAN succeeded = false;
-	int dsize;
-	int fsize = dsize = datasize;
-	int key_data_len = 64; //must be 64 bytes
+	int fsize = datasize;
+  int key_data_len = 64; //must be 64 bytes
 	unsigned long bytes_processed;
 	
 	secret = get_shared_secret(private_key, shared_secret);
@@ -677,7 +674,7 @@ int EncryptFileX(unsigned char* data, unsigned long datasize, char* private_key,
 	}
 
   encrypted = aes_encrypt(&en, data, &fsize);
-	
+
   //export the file.
 #ifdef _WIN32
 	HANDLE hFile = NULL;
@@ -734,21 +731,31 @@ void test_1(const char* private_key, const char* shared_secret) {
   unsigned char* data = NULL;
   int rc, data_size;
 
-  data = DecryptFileX((char*)private_key, (char*)shared_secret, "cred.enc", &data_size);
-
-  fp = fopen("C:\\source\\bigfile.txt", "rb+");
-  rc = EncryptFileInit((char*)private_key, (char*)shared_secret, "e-bigfile.dat");
+  /*
+  // Buffering encrypt.
+  rc = EncryptFileInit((char*)private_key, (char*)shared_secret, "resources/security-enc-copy.xml");
+  FILE* f = fopen("resources/security-plain.xml", "rb+");
+  
   for (;;) {
-    inlen = fread(inbuf, 1, 131072, fp);
+    inlen = fread(inbuf, 1, 131072, f);
     if (inlen <= 0) break;
     rc = EncryptFileUpdate(inbuf, inlen);
   }
+  
   rc = EncryptFileFinal();
+  fclose(f);
+  */
 
-  //fsize = EncryptFileX(encrypted, fsize, (char*) private_key, (char*)shared_secret, "e-bigfile.dat");
-
-  data = DecryptFileX((char*)private_key, (char*)shared_secret, "e-bigfile.dat", &data_size);
-  fdone = fopen("d-bigfile.txt", "wb");
+  // One shot read.
+  unsigned char* inbytes;
+  long fsize;
+  fsize = read_all("resources/security-plain.xml", &inbytes);
+  
+  long fsize2 = EncryptFileX(inbytes, fsize, (char*) private_key, (char*)shared_secret, "resources/security-enc-copy.xml");
+  
+  // Test what was encrypted.
+  data = DecryptFileX((char*)private_key, (char*)shared_secret, "resources/security-enc-copy.xml", &data_size);
+  fdone = fopen("resources/security-plain-copy.xml", "wb");
   fwrite(data, 1, data_size, fdone);
   fclose(fdone);
 }
@@ -831,7 +838,7 @@ void test_2(const char* private_key, const char* shared_secret, const char* encr
   printf("%s\n%d\n", decrypted, out_len);
   
   FILE* f;
-  f = fopen("dd-bigfile.dat", "w");
+  f = fopen("resources/security-plain.xml", "w");
   fwrite(decrypted, 1, out_len, f);
   fclose(f);
 #endif
@@ -850,8 +857,23 @@ void test_2(const char* private_key, const char* shared_secret, const char* encr
 }
 
 void test_3(char* private_key, char* shared_secret, char* encrypted_file) {
+  unsigned char* encrypted;
+
+  long fsize = read_all(encrypted_file, &encrypted);
+
+  int out_len;
+  unsigned char* decoded = base64_decode(encrypted, fsize, &out_len);
+
+  char* outfile = "resources/security-enc-decoded.xml";
+
+  FILE* f;
+  f = fopen(outfile, "w");
+  fwrite(decoded, 1, out_len, f);
+  fclose(f);
+
   int sz = 0;
-  DecryptFileX(private_key, shared_secret, encrypted_file, &sz);
+  unsigned char* r = DecryptFileX(private_key, shared_secret, outfile, &sz);
+  printf("%s\n", r);
 }
 
 int main(int argc, char **argv) {
@@ -868,7 +890,8 @@ int main(int argc, char **argv) {
   const char* private_key = "resources/privatekey.pem";
   const char* encrypted_file = "resources/security-enc.xml";
 
-  test_2(private_key, shared_secret, encrypted_file);
+  test_1(private_key, shared_secret);
+  // test_2(private_key, shared_secret, encrypted_file);
   // test_3(private_key, shared_secret, encrypted_file);	
   #endif
   return 0;
