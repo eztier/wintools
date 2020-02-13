@@ -822,13 +822,17 @@ void test_2(const char* private_key, const char* shared_secret, const char* encr
   printf("Reading encrypted file.\n%s\n\n", encrypted_file);
   fsize = read_all(encrypted_file, &encrypted);
   printf("fsize %d\n", fsize);
-  decrypted = (unsigned char *)aes_decrypt(&de, encrypted, &fsize);
 
-  printf("%s\n%d\n", decrypted, fsize);
+  int out_len;
+  unsigned char* decoded = base64_decode(encrypted, fsize, &out_len);
+
+  decrypted = (unsigned char *)aes_decrypt(&de, decoded, &out_len);
+
+  printf("%s\n%d\n", decrypted, out_len);
   
   FILE* f;
   f = fopen("dd-bigfile.dat", "w");
-  fwrite(decrypted, 1, fsize, f);
+  fwrite(decrypted, 1, out_len, f);
   fclose(f);
 #endif
 
