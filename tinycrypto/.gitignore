@@ -26,3 +26,4 @@ intermediate
 **/*.dat
 **/*.o
 **/*.dll
+**/*.so
