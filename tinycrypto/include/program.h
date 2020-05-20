@@ -1,4 +1,6 @@
+#ifndef DLLEXPORT
 #define DLLEXPORT __attribute__((visibility("default")))
+#endif
 
 #ifdef _WIN32
 #include <windows.h>
@@ -17,7 +19,8 @@
 #define EVP_CIPHER_CTX_reset(c) EVP_CIPHER_CTX_init(c)
 #endif
 
-const char* tinycryto_version = "0.5.2";
+#ifndef TINYCRYPTO
+#define TINYCRYPTO
 
 extern unsigned char* decrypted_data;
 
@@ -38,3 +41,5 @@ DLLEXPORT unsigned char* DecryptFileX(char* private_key, char* shared_secret, ch
 DLLEXPORT void FreeDecryptedMemory();
 
 typedef bool BOOLEAN;
+
+#endif

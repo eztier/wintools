@@ -24,3 +24,5 @@ intermediate
 **/testprogram
 **/resources
 **/*.dat
+**/*.o
+**/*.dll
