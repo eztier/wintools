@@ -32,7 +32,7 @@
 
   V1.0.2
   copy v 1.0.2 version of /openssl/evp.h into local include because /usr/local/include of v1.1 takes precendence.
-  gcc -D _DEBUG -Wall -Iinclude src/main.c base64.o program.o -L/lib/x86_64-linux-gnu -l:libcrypto.so.1.0.0 -o testprogram 
+  gcc -D _DEBUG -Wall -Iinclude src/program.c src/base64.c src/main.c -L/lib/x86_64-linux-gnu -l:libcrypto.so.1.0.0 -o testprogram 
 
   V1.1.0
   gcc -D _DEBUG -Wall -Iinclude src/program.c src/base64.c src/main.c -L/usr/local/lib -lcrypto -o testprogram 

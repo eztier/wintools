@@ -1,4 +1,3 @@
-#define _DEBUG
 #include "program.h"
 
 void test_1(const char* private_key, const char* shared_secret) {
