@@ -36,8 +36,14 @@ void test_1(const char* private_key, const char* shared_secret) {
 
 void test_2(const char* private_key, const char* shared_secret, const char* encrypted_file) {
   /* "opaque" encryption, decryption ctx structures that libcrypto uses to record status of enc/dec operations */
+  #ifdef OPENSSL_100
   EVP_CIPHER_CTX en, de;
-
+  #else
+  EVP_CIPHER_CTX *en, *de;
+  en = EVP_CIPHER_CTX_new();
+  de = EVP_CIPHER_CTX_new();
+  #endif
+  
   char* secret = NULL;
   char* iv = malloc(33);
   unsigned char* key_data = malloc(65);

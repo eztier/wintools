@@ -6,6 +6,9 @@
   The following is based on the work of Saju Pillai:
   https://github.com/saju/misc/blob/master/misc/openssl_aes.c
 
+  // Reference to moving from 1.0.0 to 1.1.0
+  https://www.cossacklabs.com/blog/moving-to-openssl-110.html
+
   EVP_CIPHER_CTX_cleanup() no longer exists in OpenSSL 1.1.0.
   EVP_CIPHER_CTX_init() is just a macro for EVP_CIPHER_CTX_reset() in 1.1.0.
 
@@ -37,6 +40,13 @@
   V1.1.0
   gcc -D _DEBUG -Wall -Iinclude src/program.c src/base64.c src/main.c -L/usr/local/lib -lcrypto -o testprogram 
 
+  // Location of all libcrypto.
+  ldconfig -p | grep crypto
+
+  // Determine which libcrypto testprogram is using. 
+  ldd testprogram | grep crypto
+	libcrypto.so.1.0.0 => /lib/x86_64-linux-gnu/libcrypto.so.1.0.0 (0x00007f29d3d21000)
+
   Existing functions have been modified and additional functions added to support Windows and designed to run with C# applications.  
 **/
 
@@ -54,7 +64,13 @@ char* dname = "tinycrypto";
 unsigned char* decrypted_data = NULL;
 
 // "opaque" encryption, decryption ctx structures that libcrypto uses to record status of enc/dec operations
+#ifdef OPENSSL_100
 EVP_CIPHER_CTX en, de;
+#else
+EVP_CIPHER_CTX *en; // = EVP_CIPHER_CTX_new();
+EVP_CIPHER_CTX *de; // = EVP_CIPHER_CTX_new();
+#endif
+  
 unsigned char inbuf[131072];
 unsigned char outbuf[131072 + EVP_MAX_BLOCK_LENGTH];
 int inlen, outlen;
@@ -410,8 +426,14 @@ void FreeDecryptedMemory() {
 
 unsigned char* DecryptFileX(char* private_key, char* shared_secret, char* filename, int* decrypted_size) {
 	// "opaque" encryption, decryption ctx structures that libcrypto uses to record status of enc/dec operations
-	EVP_CIPHER_CTX en, de;
-
+	#ifdef OPENSSL_100
+  EVP_CIPHER_CTX en, de;
+  #else
+  EVP_CIPHER_CTX *en, *de;
+  en = EVP_CIPHER_CTX_new();
+  de = EVP_CIPHER_CTX_new();
+  #endif
+  
 	char* secret = NULL;
 	char* iv = malloc(33);
 	unsigned char* key_data = malloc(65);
@@ -649,8 +671,14 @@ int EncryptFileFinal() {
 
 int EncryptFileX(unsigned char* data, unsigned long datasize, char* private_key, char* shared_secret, char* filename) {
 	// "opaque" encryption, decryption ctx structures that libcrypto uses to record status of enc/dec operations
-	EVP_CIPHER_CTX en, de;
-
+	#ifdef OPENSSL_100
+  EVP_CIPHER_CTX en, de;
+  #else
+  EVP_CIPHER_CTX *en, *de;
+  en = EVP_CIPHER_CTX_new();
+  de = EVP_CIPHER_CTX_new();
+  #endif
+  
 	char* secret = NULL;
 	char* iv = malloc(33);
 	unsigned char* key_data = malloc(65);
