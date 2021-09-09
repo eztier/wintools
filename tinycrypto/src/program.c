@@ -544,7 +544,13 @@ Cleanup:
 }
 
 int EncryptFileInit(char* private_key, char* shared_secret, char* filename) {
-	char* secret = NULL;
+	#ifdef OPENSSL_100
+  #else
+  en = EVP_CIPHER_CTX_new();
+  de = EVP_CIPHER_CTX_new();
+  #endif
+  
+  char* secret = NULL;
 	char* iv = malloc(33);
 	unsigned char* key_data = malloc(65);
 	BOOLEAN succeeded = false;

@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+
 // Link 1.0.0 with -L/lib/x86_64-linux-gnu -l:libcrypto.so.1.0.0
 #ifdef OPENSSL_100
 #include "openssl-1_0_0/evp.h"

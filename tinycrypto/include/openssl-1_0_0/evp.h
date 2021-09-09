@@ -59,6 +59,7 @@
 #ifndef HEADER_ENVELOPE_H
 # define HEADER_ENVELOPE_H
 
+/*
 # ifdef OPENSSL_ALGORITHM_DEFINES
 #  include <openssl/opensslconf.h>
 # else
@@ -66,6 +67,8 @@
 #  include <openssl/opensslconf.h>
 #  undef OPENSSL_ALGORITHM_DEFINES
 # endif
+*/
+#include "opensslconf.h"
 
 # include <openssl/ossl_typ.h>
 
