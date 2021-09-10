@@ -110,11 +110,17 @@ int aes_init(unsigned char *key_data, int key_data_len, unsigned char *salt, cha
     return -1;
   }
 
+  #ifdef OPENSSL_100
   EVP_CIPHER_CTX_init(e_ctx);
-  EVP_EncryptInit_ex(e_ctx, EVP_aes_256_cbc(), NULL, key, iv);
   EVP_CIPHER_CTX_init(d_ctx);
-  EVP_DecryptInit_ex(d_ctx, EVP_aes_256_cbc(), NULL, key, iv);
+  #else
+  e_ctx = EVP_CIPHER_CTX_new();
+  d_ctx = EVP_CIPHER_CTX_new();
+  #endif
 
+  EVP_EncryptInit_ex(e_ctx, EVP_aes_256_cbc(), NULL, key, iv);
+  EVP_DecryptInit_ex(d_ctx, EVP_aes_256_cbc(), NULL, key, iv);
+  
   return 0;
 }
 
